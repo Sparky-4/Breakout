@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title></title>
+	<link href='https://fonts.googleapis.com/css?family=Electrolize' rel='stylesheet'>
+	<style>
+		body {
+			overflow: hidden;
+			margin: 0px;
+		}
+		
+	</style>
+
+</head>
+<body onLoad = requestAnimationFrame(update)>
+
+	<canvas id="myCanvas"></canvas>
+	<script src = 'src/constants.js'></script>
+	<script src = 'src/levelMaker.js'></script>
+	<script src = 'src/ball.js'></script>
+	<script src = 'src/brick.js'></script>
+	<script src = 'src/paddle.js'></script>
+	<script src = 'src/Quad.js'></script>
+	<script src = 'src/Util.js'></script>
+	<script src = 'src/particleSystem.js'></script>
+	<script src = 'src/particle.js'></script>
+	<script src = 'src/stateMachine.js'></script>
+	<script src = 'src/powerUp.js'></script>
+	<script src = 'src/states/BaseState.js'></script>
+	<script src = 'src/states/StartState.js'></script>
+	<script src = 'src/states/ServeState.js'></script>
+	<script src = 'src/states/PlayState.js'></script>
+	<script src = 'src/states/GameOverState.js'></script>
+	<script src = 'src/states/VictoryState.js'></script>
+	<script src = 'src/states/EnterState.js'></script>
+	<script src = 'src/states/PaddleSelectState.js'></script>
+	<script>
+		
+		// Declare and initialize the canvas variables
+		var canvas = document.getElementById("myCanvas");
+		var ctx = canvas.getContext("2d");
+		canvas.width = window.innerWidth;
+		canvas.height = window.innerHeight;
+		
+		// Variables for finding FPS
+		const times = [];
+		let fps;
+		let inv = false;
+		let code = "";
+		
+		// Initialize a global level maker
+		var levelMaker = new LevelMaker();
+		let pauseTimer = 10;
+		
+		// Global variables for high scores
+		let highScores = [];
+		let highScoreNames = [];
+		loadHighScore();
+				
+		// Load new font from the font files
+		var font = new FontFace('font', 'url(fonts/font.ttf)');
+		font.load().then(function(loaded_face) {
+			document.fonts.add(loaded_face);
+		})
+		
+		// Declare and initialize objects that holds fonts
+		let gFonts = {
+			small: 8*SCALE_FACTOR_WIDTH + "px font",
+			medium: 16*SCALE_FACTOR_WIDTH + "px font",
+			large: 32*SCALE_FACTOR_WIDTH + "px font",
+			other: 4*SCALE_FACTOR_WIDTH + "px Arial"
+		};
+		
+		// Declare all images as image objects in a global textures object
+		let gTextures = {
+			background: new Image(),
+			main: new Image(1152, 1536),
+			arrows: new Image(48, 24),
+			hearts: new Image(20, 9),
+			particle: new Image(),
+		};
+		
+		// Initialize all images from files
+		gTextures.background.src = "Graphics/background.png";
+		gTextures.main.src = "Graphics/breakout_big.png";
+		gTextures.arrows.src = "Graphics/arrows.png";
+		gTextures.hearts.src = "Graphics/hearts.png";
+		gTextures.particle.src = "Graphics/particle.png";
+		
+		// Declare all sounds as audio objects in a global sounds object
+		let gSounds = {
+			brick_hit1: document.createElement("AUDIO"),
+			brick_hit2: document.createElement("AUDIO"),
+			confirm: document.createElement("AUDIO"),
+			high_score: document.createElement("AUDIO"),
+			hurt: document.createElement("AUDIO"),
+			music: document.createElement("AUDIO"),
+			no_select: document.createElement("AUDIO"),
+			paddle_hit: document.createElement("AUDIO"),
+			pause: document.createElement("AUDIO"),
+			recover: document.createElement("AUDIO"),
+			score: document.createElement("AUDIO"),
+			select: document.createElement("AUDIO"),
+			victory: document.createElement("AUDIO"),
+			wall_hit: document.createElement("AUDIO"),
+		};
+		
+		// Initialize all sounds from files
+		gSounds.brick_hit1.src = "Sounds/brick-hit-1.wav";
+		gSounds.brick_hit2.src = "Sounds/brick-hit-2.wav";
+		gSounds.confirm.src = "Sounds/confirm.wav";
+		gSounds.high_score.src = "Sounds/high_score.wav";
+		gSounds.hurt.src = "Sounds/hurt.wav";
+		gSounds.music.src = "Sounds/music.wav";
+		gSounds.music.volume = .4;
+		gSounds.music.loop = true;
+		gSounds.no_select.src = "Sounds/no-select.wav";
+		gSounds.paddle_hit.src = "Sounds/paddle_hit.wav";
+		gSounds.pause.src = "Sounds/pause.wav";
+		gSounds.recover.src = "Sounds/recover.wav";
+		gSounds.score.volume = .3;
+		gSounds.score.src = "Sounds/score.wav";
+		gSounds.select.src = "Sounds/select.wav";
+		gSounds.victory.src = "Sounds/victory.wav";
+		gSounds.wall_hit.src = "Sounds/wall_hit.wav";
+		
+		// Declare and initialize quads for all textures as objects using the util.js functions
+		gFrames = {
+			paddles: GenerateQuadsPaddles(gTextures.main),
+			balls: GenerateQuadsBalls(gTextures.main),
+			bricks: GenerateQuadsBricks(gTextures.main),
+			hearts: GenerateQuads(gTextures.hearts, 10, 9),
+			arrows: GenerateQuads(gTextures.arrows, 24, 24),
+			powerUps: GenerateQuadsPowerUps(gTextures.main)
+		}
+		
+		// Add event listeners for keydown and keyup and change the array "keys" accordingly
+		let keys = [];
+		window.addEventListener('keydown', function (e) {
+			keys[e.keyCode] = true;
+			code += e.key;
+			if(code.includes("thespanishinquisition"))
+				inv = true;
+		})
+		window.addEventListener('keyup', function (e) {
+			keys[e.keyCode] = false;
+		})
+		
+		//add an event listener for a resize to reload the page
+		<!-- window.addEventListener("resize", function () { -->
+			<!-- location.reload(); -->
+		<!-- }) -->
+		
+		gStateMachine = new StateMachine({
+		start: new StartState(),
+		scores: new BaseState(),
+		play: new PlayState(),
+		serve: new ServeState(),
+		game_over: new GameOverState(),
+		victory: new VictoryState(),
+		enter: new EnterState(),
+		select: new PaddleSelectState(),
+		});
+		gStateMachine.change('start')
+		
+		/*
+		* Load the high scores from local storage
+		*/
+		function loadHighScore()
+		{
+			let myScoreAdded = false;
+			for(let i = 0; i < 10; i++)
+			{
+				highScores.push(localStorage.getItem("Breakout"+i) || 0);
+				highScoreNames.push(localStorage.getItem("BreakoutName"+i) || 'No Entry');
+				if(highScoreNames[i] == "YSH" && highScores[i] == HIGHEST)
+					myScoreAdded = true;
+			}
+			if(highScores[0] == 0)
+			{
+				highScores[0] = HIGHEST;
+				highScoreNames[0] = "YSH";
+				localStorage.setItem("Breakout0", HIGHEST);
+				localStorage.setItem("BreakoutName0", "YSH");
+				myScoreAdded = true;
+				
+			}
+			if(!myScoreAdded)
+			{
+				for(let i = 0; i < 10; i++)
+				{
+					if(highScores[i] == 12765 && highScoreNames[i] == "YSH")
+					{
+						highScores.splice(i, 1);
+						highScores.push(0);
+						highScoreNames.splice(i, 1);
+						highScoreNames.push("No Entry");
+						for(let i = 0; i < 10; i++)
+						{
+							localStorage.setItem("Breakout"+i, highScores[i]);
+							localStorage.setItem("BreakoutName"+i, highScoreNames[i]);
+						}
+					}
+					if(highScores[i] < HIGHEST)
+					{
+						highScores.splice(i, 0, HIGHEST);
+						highScoreNames.splice(i, 0, "YSH");
+						for(let i = 0; i < 10; i++)
+						{
+							localStorage.setItem("Breakout"+i, highScores[i]);
+							localStorage.setItem("BreakoutName"+i, highScoreNames[i]);
+						}
+						return;
+					}
+				}
+			}
+		}
+		
+		/* 
+		* The update function - called every frame using requestAnimationFrame and updates
+		* individual parts of the game
+		*/
+		function update()
+		{
+			if(keys && keys[80] && pauseTimer < 0)
+			{
+				if(!gSounds.music.paused)
+					gSounds.music.pause();
+				else
+					gSounds.music.play();
+				pauseTimer = 10;
+			}
+			pauseTimer--;
+			draw();
+			gStateMachine.update();
+			requestAnimationFrame(update);
+		}
+		
+		/*
+		* Draw on the canvas and call the render functions of other necessary parts
+		*/
+		function draw()
+		{
+			ctx.drawImage(gTextures.background, 0, 0, WINDOW_WIDTH + 5, WINDOW_HEIGHT + 5);
+			ctx.textAlign = 'right';
+			ctx.font = gFonts.other;
+			ctx.fillStyle = 'cyan';
+			ctx.fillText('V 1.3', WINDOW_WIDTH - SCALE_FACTOR_WIDTH, WINDOW_HEIGHT - SCALE_FACTOR_HEIGHT);
+			displayFPS();
+			gStateMachine.render();
+		}
+		
+		/*
+		* Draw the hearts from the hearts sprites to indicate how much health the player has
+		*/
+		function renderHealth(health)
+		{
+			let healthX = WINDOW_WIDTH - 80*SCALE_FACTOR_WIDTH;
+			let healthY = 4*SCALE_FACTOR_HEIGHT;
+			
+			for(let i = 0; i < health; i++)
+			{
+				gFrames.hearts[0].draw(healthX, healthY);
+				healthX -= 11*SCALE_FACTOR_WIDTH;
+				if(healthX < 0 )
+				{
+					healthX = WINDOW_WIDTH - 80*SCALE_FACTOR_WIDTH;
+					healthY += 17*SCALE_FACTOR_HEIGHT;
+				}
+			}
+			
+			for(let i = 0; i < 3-health; i++)
+			{
+				gFrames.hearts[1].draw(healthX, 4*SCALE_FACTOR_HEIGHT);
+				healthX -= 11*SCALE_FACTOR_WIDTH;
+			}
+		}
+		
+		/*
+		* Display the FPS by adding a time stamp to the times array and removing any stamp
+		* longer than one second
+		*/
+		function displayFPS()
+		{
+			const now = performance.now();
+			while (times.length > 0 && times[0] <= now - 1000) {
+			  times.shift();
+			}
+			times.push(now);
+			fps = times.length;
+			
+			ctx.textAlign = 'left';
+			ctx.font = gFonts.small;
+			ctx.fillStyle = 'green';
+			ctx.fillText("FPS: " + fps, 10*SCALE_FACTOR_WIDTH, 10*SCALE_FACTOR_HEIGHT);
+		}
+		
+		/*
+		* Display the score at the top right with the score parameter
+		*/
+		function renderScore(score)
+		{
+			ctx.textAlign = 'left';
+			ctx.font = gFonts.small;
+			ctx.fillStyle = 'white';
+			ctx.fillText('Score: ' + score, WINDOW_WIDTH - 60*SCALE_FACTOR_WIDTH, 10*SCALE_FACTOR_HEIGHT);
+		}
+		
+		function renderPowerUps(list)
+		{
+			let x = 10*SCALE_FACTOR_WIDTH;
+			for(let i = 0; i < list.length; i++)
+			{
+				gFrames.powerUps[list[i].type].draw(x, WINDOW_HEIGHT - 17*SCALE_FACTOR_HEIGHT);
+				x += 20*SCALE_FACTOR_WIDTH;
+			}
+		}
+		
+		
+	</script>	
+	
+
+</body>
+</html>
