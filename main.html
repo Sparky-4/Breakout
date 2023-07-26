@@ -147,9 +147,9 @@
 		})
 		
 		//add an event listener for a resize to reload the page
-		<!-- window.addEventListener("resize", function () { -->
-			<!-- location.reload(); -->
-		<!-- }) -->
+		window.addEventListener("resize", function () {
+			location.reload(); 
+		})
 		
 		gStateMachine = new StateMachine({
 		start: new StartState(),
@@ -245,7 +245,7 @@
 			ctx.textAlign = 'right';
 			ctx.font = gFonts.other;
 			ctx.fillStyle = 'cyan';
-			ctx.fillText('V 1.4', WINDOW_WIDTH - SCALE_FACTOR_WIDTH, WINDOW_HEIGHT - SCALE_FACTOR_HEIGHT);
+			ctx.fillText('V 1.5', WINDOW_WIDTH - SCALE_FACTOR_WIDTH, WINDOW_HEIGHT - SCALE_FACTOR_HEIGHT);
 			displayFPS();
 			gStateMachine.render();
 		}
